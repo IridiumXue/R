@@ -1,0 +1,55 @@
+---
+title: "Untitled"
+author: "Rhenium Xue"
+date: "2024-06-11"
+output: html_document
+---
+
+```{r}
+rm(list =ls())
+# Recoding
+data('ICU', package = 'vcdExtra')
+died <- ICU$died
+died <- ifelse(died=='No', 0,1)
+sex <- ICU$sex
+sex <- ifelse(sex=='Female', 0,1)
+coma1 <- ICU$coma
+coma1 <- ifelse(ICU$coma=='Stupor', 1,0)
+coma2 <- ICU$coma
+coma2 <- ifelse(ICU$coma=='Coma', 1,0)
+systolic <- ICU$systolic
+age <- ICU$age
+
+# fit the model
+model1 <- glm(died ~ age + sex + coma1 + coma2 + systolic, family = 
+binomial(link = 'logit'))
+summary(model1)
+anova(model1, test = 'Chisq')
+# the overall test for the model, it is the likelihood ratio test
+with(model1, null.deviance - deviance) 
+with(model1, df.null - df.residual) #df of this chi square test: difference in parameter number
+with(model1, pchisq(null.deviance - deviance, df.null - df.residual, 
+lower.tail = FALSE))
+
+model2 <- glm(died ~ age + coma2 +systolic, family = binomial(link = 'logit'))
+summary(model2)
+anova(model1, model2,test = 'Chisq')
+
+# effect size of each variable(odd ratio changes)
+exp(cbind(OR = coef(model1), confint(model1)))
+# confidence interval of betas
+confint(model1)
+# use wald test for betas
+library(aod)
+wald.test(b=coef(model1),Sigma = vcov(model1),Terms = 2:2) #for age
+# the Hosmer-Lemeshow goodness of fit
+library(ResourceSelection)
+hoslem.test(x = died, y = fitted(model1), g=10)
+# pseudo-R^2
+library(pscl)
+pR2(model1) #r2CU is the Nagelkerke R^2; r2ML is the Cox&Snell R^2
+pred_y <- predict(model1, type = 'response')
+classification_df = data.frame(observed_y = died, predicted_y = 
+round(pred_y,0))
+xtabs(~observed_y+predicted_y,data=classification_df)
+```

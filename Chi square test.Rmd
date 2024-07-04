@@ -1,0 +1,31 @@
+---
+title: "Untitled"
+author: "Rhenium Xue"
+date: "2024-06-12"
+output: html_document
+---
+
+```{r}
+# 卡方独立检验
+M <- as.table(rbind(c(762, 327, 468),
+                   c(484, 239, 477)))
+dimnames(M) <- list(gender = c("F", "M"),
+                    party = c("Democrat", "Independent", "Republican"))
+M
+chisq.test(M)
+
+x <- matrix(c(12, 5, 7, 7), ncol = 2)
+x
+chisq.test(x)
+chisq.test(x, correct = F)
+
+#卡方拟合优度检验
+x <- c(A = 20, B = 15, C= 25)
+chisq.test(x)
+
+x <- c(89,37,30,28,2)
+p <- c(0.40, 0.20, 0.20, 0.19, 0.01)
+chisq.test(x, p = p)
+
+```
+
