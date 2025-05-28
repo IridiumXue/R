@@ -1,0 +1,224 @@
+---
+title: "完全随机设计与样本含量估计"
+author: "Rhenium Xue"
+date: "2025-05-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load packages}
+library(pwr)        
+library(tidyverse)  
+library(knitr)     
+library(DT)         
+```
+
+# 2. 参数设置
+
+```{r parameters}
+# 设计参数
+alpha <- 0.05    # 显著性水平（第一类错误）
+power <- 0.80    # 检验效能（1 - 第二类错误）
+two_sided <- TRUE # 双侧检验
+
+# 空腹血糖测量值参数
+mean_A <- 8.06   # 药物A组空腹血糖均值
+sd_A <- 1.82     # 药物A组空腹血糖标准差
+mean_B <- 7.23   # 药物B组空腹血糖均值
+sd_B <- 1.52     # 药物B组空腹血糖标准差
+
+# 血糖疗效参数（有效率）
+eff_rate_A <- 0.71  # 药物A组有效率
+eff_rate_B <- 0.83  # 药物B组有效率
+
+cat("研究参数汇总：\n")
+cat("显著性水平（α）:", alpha, "\n")
+cat("检验效能（1-β）:", power, "\n")
+cat("药物A组空腹血糖：", mean_A, "±", sd_A)
+cat("药物B组空腹血糖：", mean_B, "±", sd_B)
+
+cat("药物A组有效率：", eff_rate_A*100, "%\n")
+cat("药物B组有效率：", eff_rate_B*100, "%\n")
+```
+
+# 3. 空腹血糖测量值的样本量估算
+
+## 3.1 计算合并方差和标准差
+
+```{r glucose-variance}
+# 计算合并方差（假设两组样本量相等）
+pooled_variance <- (sd_A^2 + sd_B^2) / 2
+pooled_sd <- sqrt(pooled_variance)
+
+cat("合并方差：", round(pooled_variance, 4), "\n")
+cat("合并标准差：", round(pooled_sd, 4), "\n")
+```
+
+## 3.2 计算效应量和样本量
+
+```{r glucose-sample-size}
+# 计算效应量（Cohen's d）
+effect_size_glucose <- abs(mean_A - mean_B) / pooled_sd
+
+cat("空腹血糖效应量（Cohen's d）：", round(effect_size_glucose, 4), "\n")
+
+# 使用pwr包计算样本量（双侧检验，1:1分组）
+sample_size_glucose <- pwr.t.test(
+  d = effect_size_glucose,
+  sig.level = alpha,
+  power = power,
+  type = "two.sample",
+  alternative = "two.sided"
+)
+
+n_glucose <- ceiling(sample_size_glucose$n)
+cat("基于空腹血糖测量值的每组所需样本量：", n_glucose, "\n")
+cat("两组总样本量：", n_glucose * 2, "\n")
+```
+
+# 4. 血糖疗效的样本量估算
+
+```{r efficacy-sample-size}
+# 计算效应量（两比例差值）
+effect_size_efficacy <- abs(eff_rate_A - eff_rate_B)
+
+cat("血糖疗效效应量（两比例差值）：", round(effect_size_efficacy, 4), "\n")
+
+# 使用pwr包计算比例检验的样本量（双侧检验，1:1分组）
+sample_size_efficacy <- pwr.2p.test(
+  h = ES.h(eff_rate_A, eff_rate_B),  # Cohen's h效应量
+  sig.level = alpha,
+  power = power,
+  alternative = "two.sided"
+)
+
+n_efficacy <- ceiling(sample_size_efficacy$n)
+cat("基于血糖疗效的每组所需样本量：", n_efficacy, "\n")
+cat("两组总样本量：", n_efficacy * 2, "\n")
+```
+
+# 5. 最终样本量确定
+
+```{r final-sample-size}
+# 取两种估算方法中的最大值
+n_final <- max(n_glucose, n_efficacy)
+total_n <- n_final * 2
+
+cat("=== 最终样本量确定 ===\n")
+cat("基于空腹血糖测量值估算：每组", n_glucose, "人\n")
+cat("基于血糖疗效估算：每组", n_efficacy, "人\n")
+cat("最终确定样本量：每组", n_final, "人\n")
+cat("总样本量：", total_n, "人\n")
+
+# 创建样本量比较表
+sample_size_comparison <- data.frame(
+  指标 = c("空腹血糖测量值", "血糖疗效", "最终确定"),
+  每组样本量 = c(n_glucose, n_efficacy, n_final),
+  总样本量 = c(n_glucose*2, n_efficacy*2, total_n),
+  效应量 = c(round(effect_size_glucose, 4), 
+            round(ES.h(eff_rate_A, eff_rate_B), 4), 
+            "-")
+)
+
+kable(sample_size_comparison, caption = "样本量估算结果比较")
+```
+
+# 6. 完全随机分组设计
+
+## 6.1 生成随机数字进行分组
+
+```{r randomization}
+set.seed(123)  # 设置随机种子以确保结果可重现
+
+# 为每个研究对象分配一个唯一的ID
+subject_ids <- 1:total_n
+
+# 生成不重复的随机数字
+random_numbers <- sample(1:total_n, total_n, replace = FALSE)
+
+# 创建随机分组数据框
+randomization_df <- data.frame(
+  研究对象ID = subject_ids,
+  随机数字 = random_numbers
+)
+
+# 按随机数字排序
+randomization_df <- randomization_df[order(randomization_df$随机数字), ]
+
+# 按随机数字大小分组（前一半vs后一半）
+median_random <- median(randomization_df$随机数字)
+randomization_df$分组结果 <- ifelse(randomization_df$随机数字 <= median_random, "药物A组", "药物B组")
+
+cat("分组方法：按随机数字大小分组（前一半 vs 后一半）\n")
+cat("随机数字中位数：", median_random, "\n")
+cat("药物A组：随机数字 ≤", median_random, "\n")
+cat("药物B组：随机数字 >", median_random, "\n")
+
+head(randomization_df, 10)
+```
+
+## 6.2 验证分组结果
+
+```{r group-verification}
+# 检查各组样本量
+group_counts <- table(randomization_df$分组结果)
+cat("分组结果验证：\n")
+print(group_counts)
+
+# 创建最终分组表（按研究对象ID排序）
+final_grouping <- randomization_df[order(randomization_df$研究对象ID), ]
+
+cat("\n各组样本量：\n")
+cat("药物A组：", sum(final_grouping$分组结果 == "药物A组"), "人\n")
+cat("药物B组：", sum(final_grouping$分组结果 == "药物B组"), "人\n")
+```
+
+## 6.3 输出分组名单
+
+```{r group-lists}
+# 药物A组名单
+group_A <- final_grouping[final_grouping$分组结果 == "药物A组", ]
+cat("药物A组研究对象ID：\n")
+cat(paste(group_A$研究对象ID, collapse = ", "), "\n\n")
+
+# 药物B组名单
+group_B <- final_grouping[final_grouping$分组结果 == "药物B组", ]
+cat("药物B组研究对象ID：\n")
+cat(paste(group_B$研究对象ID, collapse = ", "), "\n")
+```
+
+# 8. 分组结果展示
+
+```{r display-groups}
+# 显示分组结果表格
+kable(final_grouping, 
+      caption = "完全随机分组结果（按随机数字大小分组）",
+      col.names = c("研究对象ID", "随机数字", "分组结果"))
+```
+
+# 9. 研究总结
+
+```{r summary}
+cat("===完全随机设计总结 ===\n\n")
+cat("1. 研究设计：完全随机设计，两组平行对照（1:1分组）\n")
+cat("2. 指标：空腹血糖测量值、血糖疗效\n")
+cat("3. 统计参数：\n")
+cat("   - 显著性水平：α =", alpha, "\n")
+cat("   - 检验效能：1-β =", power, "\n")
+cat("   - 检验类型：双侧检验\n")
+cat("4. 样本量估算：\n")
+cat("   - 基于空腹血糖测量值：每组", n_glucose, "人\n")
+cat("   - 基于血糖疗效：每组", n_efficacy, "人\n")
+cat("   - 最终确定：每组", n_final, "人，总计", total_n, "人\n")
+cat("5. 随机分组：采用随机数字大小分组法（前一半和后一半）\n\n")
+cat("招募", total_n, "名糖尿病患者进行试验。\n")
+```
+
+---
+
+基于双侧检验，两组样本量比为1:1
+随机种子为123
+
