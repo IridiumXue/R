@@ -1,0 +1,84 @@
+---
+title: "析因设计的随机分组"
+author: "IridiumXue"
+date: "2025-05-29"
+output: html_document
+
+---
+
+
+观察两种药物对清除幽门杆菌的效果，同时了解两种药物联合应用是否更加有效，使用析因设计的随机分组。
+A药，B药，每个因素有两个水平（用药和不用药），交叉组合即有4组。
+α= 0.05, β = 0.1 , ν = 4-1=3, λ =14.17
+最大率和最小率分别为69%和18% 
+公式如下
+
+$$
+n = \frac{2\lambda}{4 \cdot \sin^{-1}(\sqrt{p_{\text{max}}}) \cdot \left(\sin^{-1}(\sqrt{p_{\text{min}}})\right)^2}
+$$
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(pwr)
+library(dplyr)
+library(tidyr)
+```
+
+```{r}
+
+# 参数
+p_max <- 0.69
+p_min <- 0.18
+lambda <- 14.17
+
+# 弧度变换
+arcsin_sqrt_p_max <- asin(sqrt(p_max))
+arcsin_sqrt_p_min <- asin(sqrt(p_min))
+
+# n = (2 * lambda) / (4 * asin(sqrt(p_max)) * (asin(sqrt(p_min)))^2)
+n_per_group <- (2 * lambda) / (4 * arcsin_sqrt_p_max * (arcsin_sqrt_p_min)^2)
+
+# 向上取整
+n_per_group_rounded <- ceiling(n_per_group)
+
+cat("每组所需的样本量为:", n_per_group_rounded, "人。\n")
+
+```
+
+```{r}
+
+group_size <- n_per_group_rounded
+total_subjects <- group_size * 4
+
+# 创建一个包含所有研究对象ID的向量
+subject_ids <- 1:total_subjects
+
+group_names <- c("不使用A,不使用B", "不使用A,使用B", "使用A,不使用B", "使用A,使用B")
+
+set.seed(123) 
+
+# 生成随机分组，确保每组人数相等
+# rep(1:4, each = group_size) 创建一个向量，其中每个组的编号重复 group_size 次
+# sample() 函数将这个向量随机打乱，从而实现随机分组
+assigned_groups_numeric <- sample(rep(1:length(group_names), each = group_size))
+
+# 将数字组别转换为有意义的名称
+assigned_groups_name <- factor(assigned_groups_numeric, levels = 1:length(group_names), labels = group_names)
+
+# 创建一个数据框来显示分组结果
+random_assignment_df <- data.frame(
+  Subject_ID = subject_ids,
+  Assigned_Group_Numeric = assigned_groups_numeric,
+  Assigned_Group_Name = assigned_groups_name
+)
+
+# 打印分组结果的前几行
+cat("随机分组结果（前10行）:\n")
+print(head(random_assignment_df, 10))
+
+# 检查每组的实际人数
+cat("\n每组的实际人数检查:\n")
+print(table(random_assignment_df$Assigned_Group_Name))
+
+```
