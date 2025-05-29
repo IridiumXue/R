@@ -1,0 +1,115 @@
+---
+title: "随机区组设计与样本含量估计"
+author: "IridiumXue"
+date: "2025-05-29"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    theme: cosmo
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r Cohen_f}
+
+library(pwr)
+
+# 定义已知参数
+mu_groups <- c(61.4, 72.2, 68.7)
+pooled_sd <- 11.6
+num_groups <- 3 # 组的数量
+
+# 计算总体均数
+mean_overall <- mean(mu_groups)
+
+# 计算组间均数与总体均数的平方差之和
+sum_sq_diff_means <- sum((mu_groups - mean_overall)^2)
+
+# 计算Cohen's f 效应量
+# f = sqrt((Sum of Squares of group means from grand mean / k) / (pooled_sd^2))
+f_effect_size <- sqrt((sum_sq_diff_means / num_groups) / (pooled_sd^2))
+
+cat("总体均数 (μ_grand):", round(mean_overall, 2), "\n")
+cat("组间均数平方差之和:", round(sum_sq_diff_means, 2), "\n")
+cat("合并标准差 (σ):", pooled_sd, "\n")
+cat("计算得到的Cohen's f 效应量:", round(f_effect_size, 4), "\n")
+```
+
+
+
+```{r 样本含量估算}
+# 样本含量估算
+pwr_result <- pwr.anova.test(k = num_groups,
+                             f = f_effect_size,
+                             sig.level = 0.05,
+                             power = 0.80)
+print(pwr_result)
+```
+
+
+
+```{r 随机区组设计}
+
+set.seed(123) 
+
+# 根据样本量估算结果，确定所需的区组数量
+num_blocks <- ceiling(pwr_result$n) 
+total_mice <- num_blocks * num_groups
+
+# 生成小鼠ID和模拟体重
+# 假设体重在60-80g之间，并有一些随机波动，方便模拟“体重相近”的情况
+mice_data <- data.frame(
+  mouse_id = 1:total_mice,
+  weight_baseline = round(rnorm(total_mice, mean = 70, sd = 5), 1)
+)
+
+# 按体重排序，以便形成“体重相同或相近”的区组
+mice_data <- mice_data[order(mice_data$weight_baseline), ]
+
+# 初始化分组列
+mice_data$block_id <- NA
+mice_data$feed_group <- NA
+
+# 饲料组别
+feed_groups <- c("饲料A", "饲料B", "饲料C")
+
+# 进行随机分组
+for (i in 1:num_blocks) {
+  # 确定当前区组的小鼠索引
+  start_idx <- (i - 1) * num_groups + 1
+  end_idx <- i * num_groups
+  
+  # 获取当前区组的小鼠数据
+  current_block_mice_ids <- mice_data$mouse_id[start_idx:end_idx]
+  
+  # 记录区组ID
+  mice_data$block_id[start_idx:end_idx] <- i
+  
+  # 随机分配饲料组别给区组内的小鼠
+  mice_data$feed_group[start_idx:end_idx] <- sample(feed_groups)
+}
+
+# 查看前几行分组结果
+cat("前15只小鼠的随机分组结果 (按区组和原始体重排序):\n")
+print(head(mice_data, 15))
+
+# 检查每组的样本量是否符合要求
+cat("\n各饲料组的实际样本量:\n")
+print(table(mice_data$feed_group))
+
+cat("\n每区组的饲料组分配:\n")
+# 检查每个区组是否包含所有饲料组
+for(i in 1:min(num_blocks, 5)) { # 打印前5个区组
+  cat(paste0("区组 ", i, ": ", paste(mice_data$feed_group[mice_data$block_id == i], collapse = ", "), "\n"))
+}
+```
+
+---
+
+随机种子123
