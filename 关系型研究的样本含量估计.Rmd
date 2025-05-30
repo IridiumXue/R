@@ -1,0 +1,114 @@
+---
+title: "关系型研究的样本含量估计"
+author: "IridiumXue"
+date: "2025-05-30"
+output: html_document
+---
+
+研究空腹血糖与糖化血红蛋白的关系，考虑到年龄，身高，体重可能会影响二者的关系，同时调查和测量这三个因素，以80%的把握度发现二者的真实关系。
+空腹血糖与糖化血红蛋白的偏相关系数约为0.4
+以空腹血糖作为因变量，观察糖化血红蛋白对空腹血糖的影响，同时校正年龄，身高，体重的混杂，则采用回归分析。
+
+如果无法确定空腹血糖与糖化血红蛋白的因果关系，只探索二者关系，同时校正其他混杂因素，采用相关分析。
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(pwr)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+```
+
+```{r 回归分析的样本含量估计}
+
+# 设定参数
+alpha <- 0.05
+power_target <- 0.80
+partial_r <- 0.4
+# 计算f2效应量
+f2_effect_size <- partial_r^2 / (1 - partial_r^2)
+# 预测变量总数（包括HbA1c和三个混杂因素）
+k_predictors <- 4
+# 要检验的特定预测变量数量（HbA1c）
+u_numerator_df <- 1 
+
+# 计算F检验的自由度分母 (v)
+result_reg <- pwr.f2.test(u = u_numerator_df, 
+                          f2 = f2_effect_size, 
+                          sig.level = alpha, 
+                          power = power_target)
+
+# 从计算出的 v (自由度分母) 倒推总样本量 N
+# v = N - k - 1  => N = v + k + 1
+calculated_n_reg <- result_reg$v + k_predictors + 1
+
+cat(paste0("当空腹血糖与糖化血红蛋白的偏相关系数为 ", partial_r, " 时，\n"))
+cat(paste0("对应的 f^2 效应量为: ", round(f2_effect_size, 4), "\n"))
+cat(paste0("在显著性水平 ", alpha, " 和把握度 ", power_target * 100, "% 下，\n"))
+cat(paste0("进行多元回归分析（检验HbA1c的独特贡献），\n"))
+cat(paste0("需要大约", ceiling(calculated_n_reg), "名受试者。\n"))
+
+```
+
+```{r 样本含量随把握度的变化图 (回归分析)}
+
+# 创建一个把握度范围
+power_range <- seq(0.5, 0.95, by = 0.01)
+sample_sizes_reg_plot <- sapply(power_range, function(p) {
+  # 计算 v
+  v_val <- pwr.f2.test(u = u_numerator_df, f2 = f2_effect_size, sig.level = alpha, power = p)$v
+  # 从 v 倒推 N
+  ceiling(v_val + k_predictors + 1)
+})
+
+# 创建数据框
+df_reg_plot <- data.frame(
+  Power = power_range,
+  SampleSize = sample_sizes_reg_plot
+)
+
+# 绘制图表
+ggplot(df_reg_plot, aes(x = Power, y = SampleSize)) +
+  geom_line(color = "black", size = 1) +
+  geom_point(color = "black", size = 2) +
+  geom_hline(yintercept = ceiling(calculated_n_reg), linetype = "dashed", color = "black") +
+  geom_vline(xintercept = power_target, linetype = "dashed", color = "black") +
+  annotate("text", x = power_target, y = max(sample_sizes_reg_plot) * 0.9, 
+           label = paste0("目标把握度: ", power_target), color = "black", hjust = -0.1) +
+  annotate("text", x = 0.5, y = ceiling(calculated_n_reg), 
+           label = paste0("目标样本量: ", ceiling(calculated_n_reg)), color = "black", vjust = -0.5, hjust = -0.1) +
+  labs(title = "回归分析中样本含量随把握度的变化",
+       subtitle = paste0("f^2 效应量 = ", round(f2_effect_size, 4), ", 显著性水平 = ", alpha),
+       x = "把握度 (Power)",
+       y = "所需样本含量") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5), plot.subtitle = element_text(hjust = 0.5))
+
+```
+
+```{r 相关分析的样本含量估计}
+
+# 设定参数
+alpha <- 0.05
+power_target <- 0.80
+partial_r <- 0.4
+# 控制的混杂变量数量
+k_controlled_vars <- 3
+
+# 计算相关所需的样本量
+result_simple_r <- pwr.r.test(r = partial_r, 
+                              sig.level = alpha, 
+                              power = power_target, 
+                              alternative = "two.sided") # 探索关系通常为双侧检验
+
+# 对偏相关进行样本量调整
+# 常用方法：相关样本量 + 控制变量数量
+n_adjusted_partial_r <- ceiling(result_simple_r$n + k_controlled_vars)
+
+cat(paste0("当空腹血糖与糖化血红蛋白的偏相关系数为 ", partial_r, " 时，\n"))
+cat(paste0("在显著性水平 ", alpha, " 和把握度 ", power_target * 100, "% 下，\n"))
+cat(paste0("简单相关分析约需要 ", ceiling(result_simple_r$n), " 名受试者。\n"))
+cat(paste0("校正了 ", k_controlled_vars, " 个混杂因素（年龄、身高、体重），\n"))
+cat(paste0("进行偏相关分析需要大约", n_adjusted_partial_r, "名受试者。\n"))
+
+```
